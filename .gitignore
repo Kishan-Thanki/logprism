@@ -8,8 +8,14 @@
 *.so
 *.dylib
 
+# Build output
+/build
+/logprism
+/bin/
+
 # Test binary, built with `go test -c`
 *.test
+/tests/logprism_test
 
 # Code coverage profiles and other test artifacts
 *.out
