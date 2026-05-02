@@ -1,0 +1,6 @@
+{"time":"2026-05-02T10:00:00Z","level":"INFO","service":"api","msg":"server started","trace_id":"req-001","port":8080}
+{"time":"2026-05-02T10:00:01Z","level":"DEBUG","service":"api","msg":"loading config","trace_id":"req-001","path":"/etc/app.yaml"}
+{"time":"2026-05-02T10:00:02Z","level":"INFO","service":"api","msg":"request","trace_id":"req-002","method":"GET","path":"/health","status":200,"latency_ms":3.2}
+{"time":"2026-05-02T10:00:03Z","level":"WARN","service":"api","msg":"slow query","trace_id":"req-003","query":"SELECT * FROM users","latency_ms":842.5}
+{"time":"2026-05-02T10:00:04Z","level":"ERROR","service":"api","msg":"db connection failed","trace_id":"req-004","host":"db-1","retries":3}
+{"time":"2026-05-02T10:00:05Z","level":"INFO","service":"worker","msg":"job done","trace_id":"job-019","items":120,"duration_ms":1503}

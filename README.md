@@ -3,6 +3,15 @@
 A high-performance, zero-reflection CLI utility written in Go for transforming
 structured JSON logs into human-readable, color-coded terminal output.
 
+<p align="center">
+  <img src="docs/demo.gif" alt="logprism animated demo" width="720">
+</p>
+
+<p align="center">
+  <img src="docs/demo_1.png" alt="raw JSON vs. logprism output" width="48%">
+  <img src="docs/demo_2.png" alt="filtering with -filter level=ERROR"   width="48%">
+</p>
+
 `logprism` reads JSON log lines from **stdin**, parses well-known fields
 (`time`, `level`, `service`, `msg` / `message`, `trace_id`), and emits a single
 colorized line per record on **stdout**. Lines that don't parse as JSON are
@@ -81,6 +90,10 @@ Output (color stripped):
 ```
 2026-05-02T10:00:00Z | [INFO] api | abc-123 | request | path=/health | status=200
 ```
+
+## Examples
+
+Sample log files and ready-to-run commands live in [`examples/`](examples/).
 
 ## License
 

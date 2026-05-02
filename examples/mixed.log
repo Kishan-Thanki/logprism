@@ -1,0 +1,5 @@
+2026-05-02 10:00:00  starting up — this line is not JSON
+{"time":"2026-05-02T10:00:01Z","level":"INFO","service":"api","msg":"ready"}
+plain stderr line from a subprocess
+{"level":"ERROR","message":"unhandled panic","trace_id":"err-1","stack":"goroutine 1 ..."}
+{"level":"INFO","msg":"using `message` instead of `msg` field"}
