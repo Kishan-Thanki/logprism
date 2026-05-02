@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,6 +16,44 @@ import (
 )
 
 var version = "dev"
+
+// resolveVersion returns the version string, preferring (in order):
+//  1. The Makefile-stamped value from -ldflags -X main.version=...
+//  2. The module version Go records when installed via `go install ...@vX.Y.Z`.
+//  3. The VCS commit info embedded by `go build -buildvcs=true` (default).
+//  4. "dev".
+func resolveVersion() string {
+	if version != "dev" {
+		return version
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return version
+	}
+	if v := info.Main.Version; v != "" && v != "(devel)" {
+		return v
+	}
+	var rev, modified string
+	for _, s := range info.Settings {
+		switch s.Key {
+		case "vcs.revision":
+			rev = s.Value
+		case "vcs.modified":
+			modified = s.Value
+		}
+	}
+	if rev != "" {
+		short := rev
+		if len(short) > 12 {
+			short = short[:12]
+		}
+		if modified == "true" {
+			short += "-dirty"
+		}
+		return short
+	}
+	return version
+}
 
 const (
 	colorReset  = "\033[0m"
@@ -62,7 +101,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("logprism version %s\n", version)
+		fmt.Printf("logprism version %s\n", resolveVersion())
 		return
 	}
 
