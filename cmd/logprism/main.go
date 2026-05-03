@@ -10,7 +10,7 @@ import (
 	"syscall"
 )
 
-var version = "v1.1.0"
+var version = "v1.2.0"
 
 const (
 	colorReset  = "\033[0m"
@@ -89,11 +89,17 @@ func parseArgs(args []string) options {
 			if i+1 < len(args) {
 				opts.input = args[i+1]
 				i++
+			} else {
+				os.Stderr.WriteString("error: -input requires a path\n")
+				os.Exit(1)
 			}
 		case "-output", "--output":
 			if i+1 < len(args) {
 				opts.output = args[i+1]
 				i++
+			} else {
+				os.Stderr.WriteString("error: -output requires a path\n")
+				os.Exit(1)
 			}
 		case "-filter", "--filter":
 			if i+1 < len(args) {
@@ -103,6 +109,9 @@ func parseArgs(args []string) options {
 					opts.filters[f[:idx]] = f[idx+1:]
 				}
 				i++
+			} else {
+				os.Stderr.WriteString("error: -filter requires a key=value pair\n")
+				os.Exit(1)
 			}
 		case "-h", "--help":
 			printHelp()
@@ -113,14 +122,20 @@ func parseArgs(args []string) options {
 }
 
 func printHelp() {
-	os.Stdout.WriteString("Usage: logprism [flags]\n\n")
+	os.Stdout.WriteString("logprism - high-performance zero-reflection log transformer\n\n")
+	os.Stdout.WriteString("Usage:\n")
+	os.Stdout.WriteString("  cat app.log | logprism [flags]\n")
+	os.Stdout.WriteString("  logprism -input app.log [flags]\n\n")
 	os.Stdout.WriteString("Flags:\n")
 	os.Stdout.WriteString("  -input <path>      Read from file instead of stdin\n")
 	os.Stdout.WriteString("  -output <path>     Write to file instead of stdout\n")
-	os.Stdout.WriteString("  -filter k=v        Filter lines (repeatable)\n")
-	os.Stdout.WriteString("  -pretty            Indent nested JSON\n")
-	os.Stdout.WriteString("  -no-color          Disable color output\n")
-	os.Stdout.WriteString("  -version           Show version\n")
+	os.Stdout.WriteString("  -filter k=v        Filter lines (repeatable, e.g. -filter level=ERROR)\n")
+	os.Stdout.WriteString("  -pretty            Indent nested JSON values\n")
+	os.Stdout.WriteString("  -no-color          Disable ANSI color output\n")
+	os.Stdout.WriteString("  -version           Show version and exit\n")
+	os.Stdout.WriteString("  -h, --help         Show this help message\n\n")
+	os.Stdout.WriteString("Example:\n")
+	os.Stdout.WriteString("  tail -f access.json | logprism -filter status=500 -pretty\n")
 }
 
 func openInput(path string) (io.Reader, func(), error) {
