@@ -3,50 +3,14 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"errors"
-	"flag"
 	"io"
 	"os"
-	"runtime/debug"
 	"sort"
 	"strings"
 	"syscall"
 )
 
-var version = "dev"
-
-func resolveVersion() string {
-	if version != "dev" {
-		return version
-	}
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return version
-	}
-	if v := info.Main.Version; v != "" && v != "(devel)" {
-		return v
-	}
-	var rev, modified string
-	for _, s := range info.Settings {
-		switch s.Key {
-		case "vcs.revision":
-			rev = s.Value
-		case "vcs.modified":
-			modified = s.Value
-		}
-	}
-	if rev != "" {
-		short := rev
-		if len(short) > 12 {
-			short = short[:12]
-		}
-		if modified == "true" {
-			short += "-dirty"
-		}
-		return short
-	}
-	return version
-}
+var version = "v1.1.0"
 
 const (
 	colorReset  = "\033[0m"
@@ -57,50 +21,18 @@ const (
 	colorGray   = "\033[90m"
 )
 
-type filterFlag map[string]string
-
-func (f filterFlag) String() string {
-	parts := make([]string, 0, len(f))
-	for k, v := range f {
-		parts = append(parts, k+"="+v)
-	}
-	sort.Strings(parts)
-	return strings.Join(parts, ",")
-}
-
-func (f filterFlag) Set(s string) error {
-	idx := strings.Index(s, "=")
-	if idx <= 0 {
-		return errors.New("filter must be in key=value form")
-	}
-	f[s[:idx]] = s[idx+1:]
-	return nil
-}
-
 type options struct {
 	noColor bool
 	pretty  bool
 	filters map[string]string
+	input   string
+	output  string
 }
 
 func main() {
-	noColor := flag.Bool("no-color", false, "Disable ANSI color output")
-	pretty := flag.Bool("pretty", false, "Indent nested JSON values across multiple lines")
-	showVersion := flag.Bool("version", false, "Display version information")
-	inputPath := flag.String("input", "", "Read from file instead of stdin (use \"-\" for stdin)")
-	outputPath := flag.String("output", "", "Write to file instead of stdout (use \"-\" for stdout)")
-	filters := filterFlag{}
-	flag.Var(filters, "filter", "Only emit lines where key=value (repeatable, e.g. -filter level=ERROR -filter service=api)")
-	flag.Parse()
+	opts := parseArgs(os.Args[1:])
 
-	if *showVersion {
-		os.Stdout.WriteString("logprism version ")
-		os.Stdout.WriteString(resolveVersion())
-		os.Stdout.WriteString("\n")
-		return
-	}
-
-	in, closeIn, err := openInput(*inputPath)
+	in, closeIn, err := openInput(opts.input)
 	if err != nil {
 		os.Stderr.WriteString("logprism error: ")
 		os.Stderr.WriteString(err.Error())
@@ -109,7 +41,7 @@ func main() {
 	}
 	defer closeIn()
 
-	out, closeOut, isFile, err := openOutput(*outputPath)
+	out, closeOut, isFile, err := openOutput(opts.output)
 	if err != nil {
 		os.Stderr.WriteString("logprism error: ")
 		os.Stderr.WriteString(err.Error())
@@ -118,19 +50,18 @@ func main() {
 	}
 	defer closeOut()
 
-	if !*noColor {
+	if !opts.noColor {
 		if isFile {
-			*noColor = true
+			opts.noColor = true
 		} else if fileInfo, err := os.Stdout.Stat(); err == nil {
 			if (fileInfo.Mode() & os.ModeCharDevice) == 0 {
-				*noColor = true
+				opts.noColor = true
 			}
 		}
 	}
 
-	opts := options{noColor: *noColor, pretty: *pretty, filters: filters}
 	if err := run(in, out, opts); err != nil {
-		if errors.Is(err, syscall.EPIPE) {
+		if err == syscall.EPIPE {
 			return
 		}
 		os.Stderr.WriteString("logprism error: ")
@@ -138,6 +69,58 @@ func main() {
 		os.Stderr.WriteString("\n")
 		os.Exit(1)
 	}
+}
+
+func parseArgs(args []string) options {
+	opts := options{filters: make(map[string]string)}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "-no-color", "--no-color":
+			opts.noColor = true
+		case "-pretty", "--pretty":
+			opts.pretty = true
+		case "-version", "--version":
+			os.Stdout.WriteString("logprism version ")
+			os.Stdout.WriteString(version)
+			os.Stdout.WriteString("\n")
+			os.Exit(0)
+		case "-input", "--input":
+			if i+1 < len(args) {
+				opts.input = args[i+1]
+				i++
+			}
+		case "-output", "--output":
+			if i+1 < len(args) {
+				opts.output = args[i+1]
+				i++
+			}
+		case "-filter", "--filter":
+			if i+1 < len(args) {
+				f := args[i+1]
+				idx := strings.Index(f, "=")
+				if idx > 0 {
+					opts.filters[f[:idx]] = f[idx+1:]
+				}
+				i++
+			}
+		case "-h", "--help":
+			printHelp()
+			os.Exit(0)
+		}
+	}
+	return opts
+}
+
+func printHelp() {
+	os.Stdout.WriteString("Usage: logprism [flags]\n\n")
+	os.Stdout.WriteString("Flags:\n")
+	os.Stdout.WriteString("  -input <path>      Read from file instead of stdin\n")
+	os.Stdout.WriteString("  -output <path>     Write to file instead of stdout\n")
+	os.Stdout.WriteString("  -filter k=v        Filter lines (repeatable)\n")
+	os.Stdout.WriteString("  -pretty            Indent nested JSON\n")
+	os.Stdout.WriteString("  -no-color          Disable color output\n")
+	os.Stdout.WriteString("  -version           Show version\n")
 }
 
 func openInput(path string) (io.Reader, func(), error) {
@@ -204,12 +187,7 @@ func formatLine(line []byte, opts options, b *strings.Builder) bool {
 		hasTime, hasLevel, hasService, hasMsg, hasTraceID bool
 	)
 
-	type extraField struct {
-		key   []byte
-		val   []byte
-		isStr bool
-	}
-	extras := make([]extraField, 0, 8)
+	extras := make(extraFields, 0, 8)
 
 	for {
 		key, val, isStr, ok := s.nextField()
@@ -287,14 +265,13 @@ func formatLine(line []byte, opts options, b *strings.Builder) bool {
 
 	if !opts.noColor {
 		lvl := strings.ToUpper(string(levelVal))
-		switch lvl {
-		case "ERROR", "FATAL", "PANIC":
+		if strings.Contains(lvl, "ERROR") || strings.Contains(lvl, "FATAL") || strings.Contains(lvl, "PANIC") {
 			b.WriteString(colorRed)
-		case "WARN", "WARNING":
+		} else if strings.Contains(lvl, "WARN") {
 			b.WriteString(colorYellow)
-		case "INFO":
+		} else if strings.Contains(lvl, "INFO") {
 			b.WriteString(colorBlue)
-		case "DEBUG":
+		} else if strings.Contains(lvl, "DEBUG") {
 			b.WriteString(colorGray)
 		}
 	}
@@ -319,9 +296,7 @@ func formatLine(line []byte, opts options, b *strings.Builder) bool {
 	b.WriteString(" | ")
 	b.Write(msgVal)
 
-	sort.Slice(extras, func(i, j int) bool {
-		return string(extras[i].key) < string(extras[j].key)
-	})
+	sort.Sort(extras)
 
 	for _, e := range extras {
 		b.WriteString(" | ")
@@ -343,6 +318,18 @@ func formatLine(line []byte, opts options, b *strings.Builder) bool {
 	b.WriteByte('\n')
 	return true
 }
+
+type extraField struct {
+	key   []byte
+	val   []byte
+	isStr bool
+}
+
+type extraFields []extraField
+
+func (f extraFields) Len() int           { return len(f) }
+func (f extraFields) Less(i, j int) bool { return bytes.Compare(f[i].key, f[j].key) < 0 }
+func (f extraFields) Swap(i, j int)      { f[i], f[j] = f[j], f[i] }
 
 type jsonScanner struct {
 	data []byte
