@@ -27,15 +27,16 @@ const (
 )
 
 type options struct {
-	noColor bool
-	pretty  bool
-	filters map[string]string
-	input   string
-	output  string
+	noColor    bool
+	forceColor bool
+	pretty     bool
+	filters    map[string]string
+	input      string
+	output     string
 }
 
 func printHelp() {
-	os.Stdout.WriteString("logprism - high-performance zero-reflection log transformer\n\n")
+	os.Stdout.WriteString("logprism - high-performance log transformer\n\n")
 	os.Stdout.WriteString("Usage:\n")
 	os.Stdout.WriteString("  cat app.log | logprism [flags]\n")
 	os.Stdout.WriteString("  logprism -input app.log [flags]\n\n")
@@ -44,6 +45,7 @@ func printHelp() {
 	os.Stdout.WriteString("  -output <path>     Write to file instead of stdout\n")
 	os.Stdout.WriteString("  -filter k=v        Filter lines (repeatable, e.g. -filter level=ERROR)\n")
 	os.Stdout.WriteString("  -pretty            Indent nested JSON values\n")
+	os.Stdout.WriteString("  -color             Force colorized output even if not a terminal\n")
 	os.Stdout.WriteString("  -no-color          Disable ANSI color output\n")
 	os.Stdout.WriteString("  -version           Show version and exit\n")
 	os.Stdout.WriteString("  -h, --help         Show this help message\n\n")
@@ -58,6 +60,8 @@ func parseArgs(args []string) options {
 		switch arg {
 		case "-no-color", "--no-color":
 			opts.noColor = true
+		case "-color", "--color":
+			opts.forceColor = true
 		case "-pretty", "--pretty":
 			opts.pretty = true
 		case "-version", "--version":
@@ -506,11 +510,13 @@ func main() {
 	defer closeOut()
 
 	if !opts.noColor {
-		if isFile {
+		if isFile && !opts.forceColor {
 			opts.noColor = true
-		} else if fileInfo, err := os.Stdout.Stat(); err == nil {
-			if (fileInfo.Mode() & os.ModeCharDevice) == 0 {
-				opts.noColor = true
+		} else if !opts.forceColor {
+			if fi, err := os.Stdout.Stat(); err == nil {
+				if (fi.Mode() & os.ModeCharDevice) == 0 {
+					opts.noColor = true
+				}
 			}
 		}
 	}

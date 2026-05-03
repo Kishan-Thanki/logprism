@@ -39,3 +39,4 @@ go.work.sum
 *.log
 *.txt
 logprism
+perf_1m.log
