@@ -2,26 +2,19 @@ package main
 
 import (
 	"bufio"
-	"encoding/json"
+	"bytes"
 	"errors"
 	"flag"
-	"fmt"
 	"io"
 	"os"
 	"runtime/debug"
 	"sort"
-	"strconv"
 	"strings"
 	"syscall"
 )
 
 var version = "dev"
 
-// resolveVersion returns the version string, preferring (in order):
-//  1. The Makefile-stamped value from -ldflags -X main.version=...
-//  2. The module version Go records when installed via `go install ...@vX.Y.Z`.
-//  3. The VCS commit info embedded by `go build -buildvcs=true` (default).
-//  4. "dev".
 func resolveVersion() string {
 	if version != "dev" {
 		return version
@@ -78,7 +71,7 @@ func (f filterFlag) String() string {
 func (f filterFlag) Set(s string) error {
 	idx := strings.Index(s, "=")
 	if idx <= 0 {
-		return fmt.Errorf("filter must be in key=value form, got %q", s)
+		return errors.New("filter must be in key=value form")
 	}
 	f[s[:idx]] = s[idx+1:]
 	return nil
@@ -101,20 +94,26 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("logprism version %s\n", resolveVersion())
+		os.Stdout.WriteString("logprism version ")
+		os.Stdout.WriteString(resolveVersion())
+		os.Stdout.WriteString("\n")
 		return
 	}
 
 	in, closeIn, err := openInput(*inputPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "logprism error: %v\n", err)
+		os.Stderr.WriteString("logprism error: ")
+		os.Stderr.WriteString(err.Error())
+		os.Stderr.WriteString("\n")
 		os.Exit(1)
 	}
 	defer closeIn()
 
 	out, closeOut, isFile, err := openOutput(*outputPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "logprism error: %v\n", err)
+		os.Stderr.WriteString("logprism error: ")
+		os.Stderr.WriteString(err.Error())
+		os.Stderr.WriteString("\n")
 		os.Exit(1)
 	}
 	defer closeOut()
@@ -134,7 +133,9 @@ func main() {
 		if errors.Is(err, syscall.EPIPE) {
 			return
 		}
-		fmt.Fprintf(os.Stderr, "logprism error: %v\n", err)
+		os.Stderr.WriteString("logprism error: ")
+		os.Stderr.WriteString(err.Error())
+		os.Stderr.WriteString("\n")
 		os.Exit(1)
 	}
 }
@@ -188,9 +189,8 @@ func writeLine(w io.Writer, line []byte, opts options, b *strings.Builder) error
 }
 
 func formatLine(line []byte, opts options, b *strings.Builder) bool {
-	var m map[string]any
-
-	if err := json.Unmarshal(line, &m); err != nil {
+	s := &jsonScanner{data: line}
+	if !s.startObject() {
 		if len(opts.filters) > 0 {
 			return false
 		}
@@ -199,43 +199,86 @@ func formatLine(line []byte, opts options, b *strings.Builder) bool {
 		return true
 	}
 
-	if !matchesFilters(m, opts.filters) {
-		return false
+	var (
+		timeVal, levelVal, serviceVal, msgVal, traceIDVal []byte
+		hasTime, hasLevel, hasService, hasMsg, hasTraceID bool
+	)
+
+	type extraField struct {
+		key   []byte
+		val   []byte
+		isStr bool
+	}
+	extras := make([]extraField, 0, 8)
+
+	for {
+		key, val, isStr, ok := s.nextField()
+		if !ok {
+			break
+		}
+
+		if bytes.Equal(key, []byte("time")) {
+			timeVal, hasTime = val, true
+		} else if bytes.Equal(key, []byte("level")) {
+			levelVal, hasLevel = val, true
+		} else if bytes.Equal(key, []byte("service")) {
+			serviceVal, hasService = val, true
+		} else if bytes.Equal(key, []byte("msg")) || bytes.Equal(key, []byte("message")) {
+			if !hasMsg {
+				msgVal, hasMsg = val, true
+			}
+		} else if bytes.Equal(key, []byte("trace_id")) {
+			traceIDVal, hasTraceID = val, true
+		} else {
+			extras = append(extras, extraField{key, val, isStr})
+		}
 	}
 
-	var timeStr string
-	switch v := m["time"].(type) {
-	case string:
-		timeStr = v
-	case float64:
-		timeStr = strconv.FormatFloat(v, 'f', -1, 64)
+	if len(opts.filters) > 0 {
+		for fk, fv := range opts.filters {
+			found := false
+			bfk := []byte(fk)
+			if bytes.Equal(bfk, []byte("time")) {
+				if hasTime && string(timeVal) == fv {
+					found = true
+				}
+			} else if bytes.Equal(bfk, []byte("level")) {
+				if hasLevel && string(levelVal) == fv {
+					found = true
+				}
+			} else if bytes.Equal(bfk, []byte("service")) {
+				if hasService && string(serviceVal) == fv {
+					found = true
+				}
+			} else if bytes.Equal(bfk, []byte("msg")) || bytes.Equal(bfk, []byte("message")) {
+				if hasMsg && string(msgVal) == fv {
+					found = true
+				}
+			} else if bytes.Equal(bfk, []byte("trace_id")) {
+				if hasTraceID && string(traceIDVal) == fv {
+					found = true
+				}
+			}
+
+			if !found {
+				for _, e := range extras {
+					if string(e.key) == fk && string(e.val) == fv {
+						found = true
+						break
+					}
+				}
+			}
+			if !found {
+				return false
+			}
+		}
 	}
 
-	level, _ := m["level"].(string)
-	service, _ := m["service"].(string)
-
-	msg, ok := m["msg"].(string)
-	if !ok {
-		msg, _ = m["message"].(string)
-	}
-
-	traceID, _ := m["trace_id"].(string)
-	if traceID == "" {
-		traceID = "00000000-0000-0000-0000-000000000000"
-	}
-
-	delete(m, "time")
-	delete(m, "level")
-	delete(m, "msg")
-	delete(m, "message")
-	delete(m, "trace_id")
-	delete(m, "service")
-
-	if timeStr != "" {
+	if hasTime {
 		if !opts.noColor {
 			b.WriteString(colorGray)
 		}
-		b.WriteString(timeStr)
+		b.Write(timeVal)
 		if !opts.noColor {
 			b.WriteString(colorReset)
 		}
@@ -243,7 +286,8 @@ func formatLine(line []byte, opts options, b *strings.Builder) bool {
 	}
 
 	if !opts.noColor {
-		switch strings.ToUpper(level) {
+		lvl := strings.ToUpper(string(levelVal))
+		switch lvl {
 		case "ERROR", "FATAL", "PANIC":
 			b.WriteString(colorRed)
 		case "WARN", "WARNING":
@@ -255,57 +299,44 @@ func formatLine(line []byte, opts options, b *strings.Builder) bool {
 		}
 	}
 	b.WriteString("[")
-	b.WriteString(level)
+	b.Write(levelVal)
 	b.WriteString("]")
 	if !opts.noColor {
 		b.WriteString(colorReset)
 	}
 
-	if service != "" {
+	if hasService {
 		b.WriteString(" ")
-		b.WriteString(service)
+		b.Write(serviceVal)
 	}
 
 	b.WriteString(" | ")
-	b.WriteString(traceID)
-	b.WriteString(" | ")
-	b.WriteString(msg)
-
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
+	if hasTraceID {
+		b.Write(traceIDVal)
+	} else {
+		b.WriteString("00000000-0000-0000-0000-000000000000")
 	}
-	sort.Strings(keys)
+	b.WriteString(" | ")
+	b.Write(msgVal)
 
-	for _, k := range keys {
-		v := m[k]
+	sort.Slice(extras, func(i, j int) bool {
+		return string(extras[i].key) < string(extras[j].key)
+	})
+
+	for _, e := range extras {
 		b.WriteString(" | ")
 		if !opts.noColor {
 			b.WriteString(colorGreen)
 		}
-		b.WriteString(k)
+		b.Write(e.key)
 		if !opts.noColor {
 			b.WriteString(colorReset)
 		}
 		b.WriteString("=")
-
-		switch val := v.(type) {
-		case string:
-			b.WriteString(val)
-		case float64:
-			b.WriteString(strconv.FormatFloat(val, 'f', -1, 64))
-		case bool:
-			b.WriteString(strconv.FormatBool(val))
-		case nil:
-			b.WriteString("null")
-		default:
-			if opts.pretty {
-				raw, _ := json.MarshalIndent(val, "", "  ")
-				b.Write(raw)
-			} else {
-				raw, _ := json.Marshal(val)
-				b.Write(raw)
-			}
+		if opts.pretty && len(e.val) > 0 && (e.val[0] == '{' || e.val[0] == '[') {
+			writePretty(b, e.val, 0)
+		} else {
+			b.Write(e.val)
 		}
 	}
 
@@ -313,34 +344,171 @@ func formatLine(line []byte, opts options, b *strings.Builder) bool {
 	return true
 }
 
-func matchesFilters(m map[string]any, filters map[string]string) bool {
-	if len(filters) == 0 {
-		return true
+type jsonScanner struct {
+	data []byte
+	pos  int
+}
+
+func (s *jsonScanner) startObject() bool {
+	s.skipWhitespace()
+	if s.pos >= len(s.data) || s.data[s.pos] != '{' {
+		return false
 	}
-	for k, want := range filters {
-		got, ok := m[k]
-		if !ok {
-			return false
-		}
-		if !valueEquals(got, want) {
-			return false
-		}
-	}
+	s.pos++
 	return true
 }
 
-func valueEquals(v any, want string) bool {
-	switch val := v.(type) {
-	case string:
-		return val == want
-	case float64:
-		return strconv.FormatFloat(val, 'f', -1, 64) == want
-	case bool:
-		return strconv.FormatBool(val) == want
-	case nil:
-		return want == "null"
-	default:
-		raw, _ := json.Marshal(val)
-		return string(raw) == want
+func (s *jsonScanner) nextField() (key, val []byte, isStr bool, ok bool) {
+	for {
+		s.skipWhitespace()
+		if s.pos >= len(s.data) || s.data[s.pos] == '}' {
+			return nil, nil, false, false
+		}
+		if s.data[s.pos] == ',' {
+			s.pos++
+			continue
+		}
+		break
+	}
+
+	s.skipWhitespace()
+	key, ok = s.readString()
+	if !ok {
+		return nil, nil, false, false
+	}
+
+	s.skipWhitespace()
+	if s.pos >= len(s.data) || s.data[s.pos] != ':' {
+		return nil, nil, false, false
+	}
+	s.pos++
+
+	s.skipWhitespace()
+	val, isStr, ok = s.readValue()
+	return key, val, isStr, ok
+}
+
+func (s *jsonScanner) skipWhitespace() {
+	for s.pos < len(s.data) {
+		c := s.data[s.pos]
+		if c != ' ' && c != '\t' && c != '\n' && c != '\r' {
+			break
+		}
+		s.pos++
+	}
+}
+
+func (s *jsonScanner) readString() ([]byte, bool) {
+	if s.pos >= len(s.data) || s.data[s.pos] != '"' {
+		return nil, false
+	}
+	s.pos++
+	start := s.pos
+	for s.pos < len(s.data) {
+		if s.data[s.pos] == '"' && s.data[s.pos-1] != '\\' {
+			res := s.data[start:s.pos]
+			s.pos++
+			return res, true
+		}
+		s.pos++
+	}
+	return nil, false
+}
+
+func (s *jsonScanner) readValue() (val []byte, isStr bool, ok bool) {
+	if s.pos >= len(s.data) {
+		return nil, false, false
+	}
+	c := s.data[s.pos]
+	if c == '"' {
+		v, ok := s.readString()
+		return v, true, ok
+	}
+	if c == '{' || c == '[' {
+		return s.readBlock(), false, true
+	}
+	start := s.pos
+	for s.pos < len(s.data) {
+		c := s.data[s.pos]
+		if c == ',' || c == '}' || c == ']' || c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+			break
+		}
+		s.pos++
+	}
+	return s.data[start:s.pos], false, true
+}
+
+func (s *jsonScanner) readBlock() []byte {
+	start := s.pos
+	open := s.data[s.pos]
+	var close byte
+	if open == '{' {
+		close = '}'
+	} else {
+		close = ']'
+	}
+	depth := 0
+	inString := false
+	for s.pos < len(s.data) {
+		c := s.data[s.pos]
+		if c == '"' && (s.pos == 0 || s.data[s.pos-1] != '\\') {
+			inString = !inString
+		} else if !inString {
+			if c == open {
+				depth++
+			} else if c == close {
+				depth--
+				if depth == 0 {
+					s.pos++
+					return s.data[start:s.pos]
+				}
+			}
+		}
+		s.pos++
+	}
+	return s.data[start:s.pos]
+}
+
+func writePretty(b *strings.Builder, data []byte, indent int) {
+	inString := false
+	for i := 0; i < len(data); i++ {
+		c := data[i]
+		if c == '"' && (i == 0 || data[i-1] != '\\') {
+			inString = !inString
+			b.WriteByte(c)
+			continue
+		}
+		if inString {
+			b.WriteByte(c)
+			continue
+		}
+		switch c {
+		case '{', '[':
+			b.WriteByte(c)
+			b.WriteByte('\n')
+			indent++
+			writeIndent(b, indent)
+		case '}', ']':
+			b.WriteByte('\n')
+			indent--
+			writeIndent(b, indent)
+			b.WriteByte(c)
+		case ',':
+			b.WriteByte(c)
+			b.WriteByte('\n')
+			writeIndent(b, indent)
+		case ':':
+			b.WriteString(": ")
+		case ' ', '\t', '\n', '\r':
+			continue
+		default:
+			b.WriteByte(c)
+		}
+	}
+}
+
+func writeIndent(b *strings.Builder, n int) {
+	for i := 0; i < n; i++ {
+		b.WriteString("  ")
 	}
 }
