@@ -18,6 +18,11 @@
 
 It is designed to handle massive, high-throughput production log streams without slowing down your data pipeline or exhausting system resources.
 
+### Continuous Benchmarking
+Every commit is automatically benchmarked on a neutral Linux environment via **GitHub Actions** to ensure zero performance regressions.
+
+**See the [Full Performance Benchmarks](PERFORMANCE.md) for detailed measurements on Apple M2.**
+
 ## Installation
 
 ### via Go (Recommended)

@@ -1,0 +1,29 @@
+name: Performance Benchmark
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.22'
+
+    - name: Build
+      run: go build -v -o logprism ./cmd/logprism
+
+    - name: Generate Test Data
+      run: go run scripts/gen_perf_data.go
+
+    - name: Run Performance Test
+      run: |
+        echo "Running 1 Million Line Benchmark on Ubuntu Latest..."
+        time ./logprism -input perf_1m.log > /dev/null

@@ -1,5 +1,5 @@
 BINARY_NAME=logprism
-VERSION=1.0.0
+VERSION=1.2.1
 LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION)"
 
 .PHONY: build install release clean test bench fmt vet lint check
@@ -51,4 +51,5 @@ check: fmt vet test
 # 9. Clean up binaries
 clean:
 	rm -f $(BINARY_NAME)
+	rm -f *.log *.txt
 	rm -rf bin build
