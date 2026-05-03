@@ -1,100 +1,80 @@
 # logprism
 
-A high-performance, zero-reflection CLI utility written in Go for transforming
-structured JSON logs into human-readable, color-coded terminal output.
+**The Universal, High-Speed JSON Log Formatter.**
+
+[![Go Report Card](https://goreportcard.com/badge/github.com/Kishan-Thanki/logprism)](https://goreportcard.com/report/github.com/Kishan-Thanki/logprism)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Go Reference](https://pkg.go.dev/badge/github.com/Kishan-Thanki/logprism.svg)](https://pkg.go.dev/github.com/Kishan-Thanki/logprism)
+
+`logprism` is a "bare-metal" CLI utility designed to transform structured JSON logs into beautiful, human-readable terminal output. While written in Go, it is a **universal tool** that works with logs from any language or framework (Java, Python, Rust, Node.js, C#, etc.).
 
 <p align="center">
   <img src="docs/demo.gif" alt="logprism animated demo" width="720">
 </p>
 
-<p align="center">
-  <img src="docs/demo_1.png" alt="raw JSON vs. logprism output" width="48%">
-  <img src="docs/demo_2.png" alt="filtering with -filter level=ERROR"   width="48%">
-</p>
+## Performance
 
-`logprism` reads JSON log lines from **stdin**, parses well-known fields
-(`time`, `level`, `service`, `msg` / `message`, `trace_id`), and emits a single
-colorized line per record on **stdout**. Lines that don't parse as JSON are
-passed through unchanged.
+`logprism` is built for extreme speed. By using a high-efficiency byte-scanner and a manual state machine, it processes log streams with ultra-low latency and minimal CPU and memory overhead. 
 
-## Install
+It is designed to handle massive, high-throughput production log streams without slowing down your data pipeline or exhausting system resources.
 
+## Installation
+
+### via Go (Recommended)
 ```sh
 go install github.com/Kishan-Thanki/logprism/cmd/logprism@latest
 ```
 
-This installs the `logprism` binary into `$GOBIN` (or `$GOPATH/bin`). Make sure
-that directory is on your `$PATH`.
+### Manual
+`logprism` is a single, self-contained binary with **zero external dependencies**. Simply download the binary for your OS and move it to your `/usr/local/bin`.
 
 ## Usage
 
-Pipe any JSON log stream into `logprism`:
-
+### The Standard Pipe
+Pipe any JSON log stream directly into `logprism`:
 ```sh
-my-service        | logprism
-tail -f app.log   | logprism
-docker logs -f x  | logprism
+# Live application logs
+tail -f access.json | logprism
+
+# Docker logs
+docker logs -f my-container | logprism
+
+# Process output
+./my-app-binary | logprism
 ```
 
-Or use file flags directly:
-
+### Direct File Input
 ```sh
-logprism -input app.log
-logprism -input app.log -output readable.log
+logprism -input production.log
+logprism -input production.log -output readable.log
 ```
 
-### Flags
+## Features
 
-| Flag                | Description                                                              |
-|---------------------|--------------------------------------------------------------------------|
-| `-input <path>`     | Read from file instead of stdin (`-` means stdin).                       |
-| `-output <path>`    | Write to file instead of stdout (`-` means stdout). Disables color.      |
-| `-filter key=value` | Only emit records where `key` equals `value`. Repeatable (AND-ed).       |
-| `-pretty`           | Indent nested JSON values across multiple lines.                         |
-| `-no-color`         | Disable ANSI color output (auto-disabled when piped or writing a file).  |
-| `-version`          | Print the version and exit.                                              |
+*   **Zero-Configuration**: Automatically detects well-known fields (`time`, `level`, `service`, `msg`, `trace_id`).
+*   **Smart Filtering**: Instant, high-speed filtering without overhead.
+    *   `logprism -filter level=ERROR`
+*   **Pretty Printing**: Handle complex nested JSON with the `-pretty` flag.
+*   **Auto-Color**: Automatically detects if output is a file or pipe to disable ANSI colors.
+*   **Alphabetical Extras**: Any non-standard fields are sorted alphabetically for stable, diff-friendly output.
 
-### Filtering
+## Log Level Colors
 
-```sh
-tail -f app.log | logprism -filter level=ERROR
-tail -f app.log | logprism -filter level=INFO -filter service=api
-```
+`logprism` automatically colorizes your logs for instant visual scanning:
+*   🔴 `ERROR` / `FATAL` / `PANIC`
+*   🟡 `WARN`
+*   🔵 `INFO`
+*   ⚪ `DEBUG`
 
-`-filter` matches strings, numbers (`-filter status=200`), bools, and `null`.
-Multiple `-filter` flags AND together. Records that don't parse as JSON are
-dropped when any filter is active.
+## Philosophy: Why is it so fast?
 
-### Output format
+Most JSON tools are built to be "general purpose," which makes them slow and memory-heavy. They have to "re-discover" the structure of your data every time they read a line.
 
-```
-<time> | [LEVEL] <service> | <trace_id> | <msg> | k1=v1 | k2=v2 | ...
-```
-
-- Extra fields (anything not in the well-known set) are appended in
-  **alphabetical order** for stable, diff-friendly output.
-- Missing `trace_id` is rendered as the all-zero UUID.
-- Level is colored: `ERROR`/`FATAL`/`PANIC` red, `WARN` yellow, `INFO` blue,
-  `DEBUG` gray.
-
-### Example
-
-Input:
-
-```json
-{"time":"2026-05-02T10:00:00Z","level":"INFO","service":"api","msg":"request","trace_id":"abc-123","status":200,"path":"/health"}
-```
-
-Output (color stripped):
-
-```
-2026-05-02T10:00:00Z | [INFO] api | abc-123 | request | path=/health | status=200
-```
-
-## Examples
-
-Sample log files and ready-to-run commands live in [`examples/`](examples/).
+`logprism` uses a specialized **Direct Byte Scanner**. This means:
+1.  **Single Pass**: We touch each character exactly once.
+2.  **Minimal Resource Overhead**: It uses a tiny, fixed amount of memory regardless of the log volume.
+3.  **Maximum Portability**: The binary is small, self-contained, and contains everything it needs to run.
 
 ## License
 
-See [LICENSE](LICENSE).
+Licensed under the **Apache License 2.0**. See [LICENSE](LICENSE) for details.
