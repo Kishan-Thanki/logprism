@@ -27,7 +27,7 @@ This measurement includes the full cycle: reading from disk, parsing the JSON fi
 We verify performance on every commit using **Ubuntu Latest** (GitHub Runners).
 
 *   **Dataset**: 1,000,000 lines of structured JSON logs.
-*   **Latest Result**: **<!-- LATEST_RESULT -->1.33 seconds<!-- /LATEST_RESULT -->**
+*   **Latest Result**: **<!-- LATEST_RESULT -->1.02 seconds<!-- /LATEST_RESULT -->**
 *   **Last Verified**: <!-- LATEST_DATE -->May 03, 2026<!-- /LATEST_DATE -->
 
 *This section is automatically updated by our [Performance Benchmark workflow](.github/workflows/bench.yml).*
