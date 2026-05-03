@@ -22,6 +22,16 @@ We tested the ability of `logprism` to process a massive, structured JSON log fi
 
 This measurement includes the full cycle: reading from disk, parsing the JSON fields, matching filters, and writing the formatted output to the stream.
 
+### Cloud Results (GitHub Actions)
+
+We verify performance on every commit using **Ubuntu Latest** (GitHub Runners).
+
+*   **Dataset**: 1,000,000 lines of structured JSON logs.
+*   **Latest Result**: **<!-- LATEST_RESULT -->~1.3 seconds<!-- /LATEST_RESULT -->**
+*   **Last Verified**: <!-- LATEST_DATE -->May 03, 2026<!-- /LATEST_DATE -->
+
+*This section is automatically updated by our [Performance Benchmark workflow](.github/workflows/bench.yml).*
+
 ## Memory Efficiency
 
 `logprism` is designed for a "flat" memory footprint. It does not store the entire log file in RAM; it processes logs line-by-line using a specialized byte-scanner.

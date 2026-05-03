@@ -3,6 +3,7 @@
 **The Universal, High-Speed JSON Log Formatter.**
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/Kishan-Thanki/logprism)](https://goreportcard.com/report/github.com/Kishan-Thanki/logprism)
+[![Performance Benchmark](https://github.com/Kishan-Thanki/logprism/actions/workflows/bench.yml/badge.svg)](https://github.com/Kishan-Thanki/logprism/actions/workflows/bench.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Go Reference](https://pkg.go.dev/badge/github.com/Kishan-Thanki/logprism.svg)](https://pkg.go.dev/github.com/Kishan-Thanki/logprism)
 

@@ -9,6 +9,8 @@ on:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
     - uses: actions/checkout@v4
 
@@ -25,5 +27,24 @@ jobs:
 
     - name: Run Performance Test
       run: |
-        echo "Running 1 Million Line Benchmark on Ubuntu Latest..."
-        time ./logprism -input perf_1m.log > /dev/null
+        # Use /usr/bin/time to get the real time value
+        /usr/bin/time -f "%e" ./logprism -input perf_1m.log > /dev/null 2> bench_time.txt
+        RESULT=$(cat bench_time.txt)
+        echo "LATEST_TIME=$RESULT" >> $GITHUB_ENV
+        echo "Benchmark took $RESULT seconds"
+
+    - name: Update PERFORMANCE.md
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      run: |
+        DATE=$(date +'%b %d, %Y')
+        TIME_RESULT="${{ env.LATEST_TIME }} seconds"
+        
+        # Use sed to replace content between the markers
+        sed -i "s|<!-- LATEST_RESULT -->.*<!-- /LATEST_RESULT -->|<!-- LATEST_RESULT -->$TIME_RESULT<!-- /LATEST_RESULT -->|g" PERFORMANCE.md
+        sed -i "s|<!-- LATEST_DATE -->.*<!-- /LATEST_DATE -->|<!-- LATEST_DATE -->$DATE<!-- /LATEST_DATE -->|g" PERFORMANCE.md
+        
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        
+        git add PERFORMANCE.md
+        git diff --quiet && git diff --staged --quiet || (git commit -m "docs: update latest cloud benchmark results [skip ci]" && git push)
