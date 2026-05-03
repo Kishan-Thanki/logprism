@@ -10,7 +10,7 @@ import (
 	"syscall"
 )
 
-var version = "v1.2.0"
+var version = "v1.2.1"
 
 const (
 	colorReset  = "\033[0m"
