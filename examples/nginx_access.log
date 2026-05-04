@@ -1,0 +1,5 @@
+{"time":"2026-05-04T12:00:01Z","remote_ip":"192.168.1.1","method":"GET","path":"/index.html","status":200,"size":1024,"ua":"Mozilla/5.0","latency":0.002}
+{"time":"2026-05-04T12:00:02Z","remote_ip":"10.0.0.5","method":"POST","path":"/api/login","status":401,"size":256,"ua":"curl/7.68.0","latency":0.045}
+{"time":"2026-05-04T12:00:03Z","remote_ip":"192.168.1.20","method":"GET","path":"/static/app.js","status":200,"size":45612,"ua":"Mozilla/5.0","latency":0.012}
+{"time":"2026-05-04T12:00:04Z","remote_ip":"172.16.0.10","method":"GET","path":"/api/data","status":500,"size":102,"ua":"PostmanRuntime/7.26.8","latency":1.203}
+{"time":"2026-05-04T12:00:05Z","remote_ip":"192.168.1.1","method":"GET","path":"/favicon.ico","status":404,"size":0,"ua":"Mozilla/5.0","latency":0.001}

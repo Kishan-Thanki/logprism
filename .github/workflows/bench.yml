@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   benchmark:
     runs-on: ubuntu-latest
@@ -17,7 +20,8 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.22'
+        go-version: '1.23'
+        cache: false
 
     - name: Build
       run: go build -v -o logprism ./cmd/logprism
@@ -27,7 +31,6 @@ jobs:
 
     - name: Run Performance Test
       run: |
-        # Use /usr/bin/time to get the real time value
         /usr/bin/time -f "%e" ./logprism -input perf_1m.log > /dev/null 2> bench_time.txt
         RESULT=$(cat bench_time.txt)
         echo "LATEST_TIME=$RESULT" >> $GITHUB_ENV
@@ -37,14 +40,24 @@ jobs:
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
       run: |
         DATE=$(date +'%b %d, %Y')
-        TIME_RESULT="${{ env.LATEST_TIME }} seconds"
+        TIME_VAL=${{ env.LATEST_TIME }}
+        TIME_RESULT="$TIME_VAL seconds"
         
-        # Use sed to replace content between the markers
-        sed -i "s|<!-- LATEST_RESULT -->.*<!-- /LATEST_RESULT -->|<!-- LATEST_RESULT -->$TIME_RESULT<!-- /LATEST_RESULT -->|g" PERFORMANCE.md
-        sed -i "s|<!-- LATEST_DATE -->.*<!-- /LATEST_DATE -->|<!-- LATEST_DATE -->$DATE<!-- /LATEST_DATE -->|g" PERFORMANCE.md
+        # Calculate Throughput: 1,000,000 / TIME_VAL
+        # Use bc for floating point math if needed, but for lines/sec scale=0 is fine
+        TPS=$(echo "1000000 / $TIME_VAL" | bc)
+        # Format with commas (e.g. 980,392) using printf or simple sed
+        # Note: ubuntu printf doesn't always support %'d without LC_NUMERIC
+        TPS_FORMATTED=$(printf "%d" $TPS | sed ':a;s/\B[0-9]\{3\}\>/,&/;ta')
+        THROUGHPUT="~$TPS_FORMATTED lines per second"
+        
+        # Use sed to replace content in docs/PERFORMANCE.md
+        sed -i "s|<!-- LATEST_RESULT -->.*<!-- /LATEST_RESULT -->|<!-- LATEST_RESULT -->**$TIME_RESULT**<!-- /LATEST_RESULT -->|g" docs/PERFORMANCE.md
+        sed -i "s|<!-- LATEST_THROUGHPUT -->.*<!-- /LATEST_THROUGHPUT -->|<!-- LATEST_THROUGHPUT -->$THROUGHPUT<!-- /LATEST_THROUGHPUT -->|g" docs/PERFORMANCE.md
+        sed -i "s|<!-- LATEST_DATE -->.*<!-- /LATEST_DATE -->|<!-- LATEST_DATE -->$DATE<!-- /LATEST_DATE -->|g" docs/PERFORMANCE.md
         
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         
-        git add PERFORMANCE.md
+        git add docs/PERFORMANCE.md
         git diff --quiet && git diff --staged --quiet || (git commit -m "docs: update latest cloud benchmark results [skip ci]" && git push)

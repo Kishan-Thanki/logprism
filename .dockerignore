@@ -1,0 +1,16 @@
+.git
+bin/
+build/
+docs/
+assets/
+examples/
+*.log
+*.txt
+.github/
+.gemini/
+Makefile
+Dockerfile
+.dockerignore
+.gitignore
+coverage.out
+bench_time.txt

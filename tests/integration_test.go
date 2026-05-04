@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -182,7 +183,7 @@ func TestVersionFlag(t *testing.T) {
 		t.Fatalf("failed to run version check: %v", err)
 	}
 
-	if !strings.Contains(string(output), "logprism version") {
+	if !strings.HasPrefix(string(output), "logprism ") {
 		t.Errorf("expected version output, got %q", string(output))
 	}
 }
@@ -211,10 +212,6 @@ func TestLargeLine(t *testing.T) {
 func TestBrokenPipe(t *testing.T) {
 	absPath, _ := filepath.Abs(binName)
 
-	// Generate many lines so the producer keeps writing after `head -n 1`
-	// closes the read end of the pipe. logprism must exit promptly without
-	// erroring on EPIPE. Using a shell pipeline avoids the parent process
-	// holding the read end open, which is what would mask the EPIPE.
 	var input bytes.Buffer
 	for i := 0; i < 100000; i++ {
 		input.WriteString(`{"level":"INFO","msg":"x"}` + "\n")
@@ -241,5 +238,129 @@ func TestBrokenPipe(t *testing.T) {
 
 	if !strings.Contains(out.String(), "[INFO]") {
 		t.Errorf("expected at least one line, got %q", out.String())
+	}
+}
+
+func TestAnalyzerV130Features(t *testing.T) {
+	absPath, _ := filepath.Abs(binName)
+
+	t.Run("Exclusion and Mapping", func(t *testing.T) {
+		input := `{"severity":"DEBUG","msg":"noise"}` + "\n" +
+			`{"severity":"ERROR","msg":"hit"}` + "\n"
+		cmd := exec.Command(absPath, "-no-color", "-map", "level=severity", "-exclude", "level=DEBUG")
+		cmd.Stdin = strings.NewReader(input)
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("run: %v", err)
+		}
+		o := out.String()
+		if strings.Contains(o, "noise") || !strings.Contains(o, "hit") {
+			t.Errorf("expected only 'hit' after mapping and exclusion, got %q", o)
+		}
+	})
+
+	t.Run("Numeric Comparison", func(t *testing.T) {
+		input := `{"level":"INFO","status":200,"msg":"ok"}` + "\n" +
+			`{"level":"ERROR","status":500,"msg":"fail"}` + "\n"
+		cmd := exec.Command(absPath, "-no-color", "-filter", "status>400")
+		cmd.Stdin = strings.NewReader(input)
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("run: %v", err)
+		}
+		o := out.String()
+		if strings.Contains(o, "ok") || !strings.Contains(o, "fail") {
+			t.Errorf("expected only status>400 match, got %q", o)
+		}
+	})
+
+	t.Run("Context Windows", func(t *testing.T) {
+		input := `{"level":"INFO","msg":"1"}` + "\n" +
+			`{"level":"INFO","msg":"2"}` + "\n" +
+			`{"level":"ERROR","msg":"MATCH"}` + "\n" +
+			`{"level":"INFO","msg":"3"}` + "\n"
+		cmd := exec.Command(absPath, "-no-color", "-filter", "level=ERROR", "-C", "1")
+		cmd.Stdin = strings.NewReader(input)
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("run: %v", err)
+		}
+		o := out.String()
+		if !strings.Contains(o, "2") || !strings.Contains(o, "MATCH") || !strings.Contains(o, "3") || strings.Contains(o, "1") {
+			t.Errorf("expected context lines 2, MATCH, 3 but not 1, got %q", o)
+		}
+	})
+}
+
+func TestChaosStress(t *testing.T) {
+	absPath, _ := filepath.Abs(binName)
+
+	var input bytes.Buffer
+	for i := 0; i < 1000; i++ {
+		input.WriteString(`{"level":"INFO","msg":"valid"}` + "\n")
+		input.WriteString(`{"level":"ERROR","msg":"truncated"` + "\n")
+		input.WriteString("\x00\x01\x02\x03BINARY_GARBAGE\xff\xfe\n")
+		input.WriteString(strings.Repeat("long_unbreakable_line_", 100) + "\n")
+	}
+
+	cmd := exec.Command(absPath, "-no-color")
+	cmd.Stdin = &input
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("logprism crashed during chaos stress test: %v", err)
+	}
+}
+
+func TestMemoryFlatness(t *testing.T) {
+	absPath, _ := filepath.Abs(binName)
+
+	cmd := exec.Command(absPath, "-no-color")
+	pr, pw := io.Pipe()
+	cmd.Stdin = pr
+	cmd.Stdout = io.Discard
+
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	go func() {
+		defer pw.Close()
+		line := []byte(`{"time":"2026-05-04T10:00:00Z","level":"INFO","service":"api","msg":"steady-stream","status":200}` + "\n")
+		for i := 0; i < 100000; i++ {
+			pw.Write(line)
+		}
+	}()
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("execution failed: %v", err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Errorf("memory flatness test timed out")
+	}
+}
+
+func TestDeepNesting(t *testing.T) {
+	absPath, _ := filepath.Abs(binName)
+
+	input := `{"level":"INFO","msg":"nested","data":` + strings.Repeat(`{"a":`, 40) + `1` + strings.Repeat(`}`, 40) + `}` + "\n"
+	cmd := exec.Command(absPath, "-no-color", "-pretty")
+	cmd.Stdin = strings.NewReader(input)
+
+	var out bytes.Buffer
+	cmd.Stdout = &out
+
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("crashed on deep nesting: %v", err)
+	}
+
+	if !strings.Contains(out.String(), "a=") {
+		t.Errorf("expected nested keys in output, got %q", out.String())
 	}
 }

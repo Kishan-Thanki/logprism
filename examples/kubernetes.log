@@ -1,0 +1,5 @@
+{"time":"2026-05-04T10:00:00Z","level":"INFO","pod":"auth-api-8c6f","ns":"prod","msg":"session created","user_id":"u-101"}
+{"time":"2026-05-04T10:00:01Z","level":"INFO","pod":"auth-api-8c6f","ns":"prod","msg":"authenticating","method":"jwt"}
+{"time":"2026-05-04T10:00:02Z","level":"WARN","pod":"payment-worker-42a1","ns":"prod","msg":"retry attempt","job_id":"j-992","attempt":2}
+{"time":"2026-05-04T10:00:03Z","level":"ERROR","pod":"auth-api-8c6f","ns":"prod","msg":"invalid token","user_id":"u-101","reason":"expired"}
+{"time":"2026-05-04T10:00:04Z","level":"INFO","pod":"gateway-b912","ns":"prod","msg":"upstream request","target":"auth-api","latency_ms":14.2}
