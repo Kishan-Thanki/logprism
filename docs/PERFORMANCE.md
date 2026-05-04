@@ -28,8 +28,8 @@ These metrics are captured on every commit to ensure zero performance regression
 
 *   **Server**: Ubuntu Latest (Standard GitHub Runner).
 *   **Dataset**: 1,000,000 lines of structured JSON logs.
-*   **Result**: <!-- LATEST_RESULT -->**1.39 seconds**<!-- /LATEST_RESULT -->
-*   **Throughput**: <!-- LATEST_THROUGHPUT -->~719,424 lines per second<!-- /LATEST_THROUGHPUT -->
+*   **Result**: <!-- LATEST_RESULT -->**1.38 seconds**<!-- /LATEST_RESULT -->
+*   **Throughput**: <!-- LATEST_THROUGHPUT -->~724,637 lines per second<!-- /LATEST_THROUGHPUT -->
 *   **Last Verified**: <!-- LATEST_DATE -->May 04, 2026<!-- /LATEST_DATE -->
 
 > [!IMPORTANT]
