@@ -329,7 +329,9 @@ func TestMemoryFlatness(t *testing.T) {
 		defer pw.Close()
 		line := []byte(`{"time":"2026-05-04T10:00:00Z","level":"INFO","service":"api","msg":"steady-stream","status":200}` + "\n")
 		for i := 0; i < 100000; i++ {
-			pw.Write(line)
+			if _, err := pw.Write(line); err != nil {
+				return
+			}
 		}
 	}()
 
